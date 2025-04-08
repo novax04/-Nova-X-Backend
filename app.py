@@ -31,7 +31,6 @@ country_codes = {
 
 @app.route('/')
 def home():
-    # Return a simple message or redirect to frontend
     return redirect(FRONTEND_URL, code=302)
 
 @app.route('/datetime', methods=['GET'])
@@ -41,12 +40,8 @@ def get_datetime():
     time = now.strftime('%I:%M:%S %p')
     return jsonify({'response': f"📅 Date: {date} | ⏰ Time: {time}"})
 
-@app.route('/chat', methods=['POST'])
-def chat():
-    message = request.json.get('message', '').strip()
-    if not message:
-        return jsonify({'error': '⚠️ Message is required'}), 400
 
+def handle_chat(message):
     chat_history.append({"role": "user", "content": message})
     system_prompt = {"role": "system", "content": "You are Nova X, a helpful AI assistant."}
     trimmed_history = chat_history[-12:]
@@ -65,13 +60,32 @@ def chat():
         "Authorization": f"Bearer {GROQ_API_KEY}"
     }
 
+    response = requests.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers)
+    data = response.json()
+    reply = data['choices'][0]['message']['content']
+    chat_history.append({"role": "assistant", "content": reply})
+    return reply
+
+@app.route('/chat', methods=['POST'])
+def chat():
+    message = request.json.get('message', '').strip()
+    if not message:
+        return jsonify({'error': '⚠️ Message is required'}), 400
     try:
-        response = requests.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers)
-        data = response.json()
-        reply = data['choices'][0]['message']['content']
-        chat_history.append({"role": "assistant", "content": reply})
+        reply = handle_chat(message)
         return jsonify({'response': reply})
-    except Exception as e:
+    except Exception:
+        return jsonify({'response': '❌ Error connecting to Groq Chat API.'}), 500
+
+@app.route('/api/ask', methods=['POST'])
+def api_ask():
+    message = request.json.get('message', '').strip()
+    if not message:
+        return jsonify({'error': 'Message is required'}), 400
+    try:
+        reply = handle_chat(message)
+        return jsonify({'response': reply})
+    except Exception:
         return jsonify({'response': '❌ Error connecting to Groq Chat API.'}), 500
 
 @app.route('/reset-memory', methods=['POST'])
@@ -151,7 +165,6 @@ def search_web():
 def serve_static(path):
     return send_from_directory('public', path)
 
-# Final run block
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
