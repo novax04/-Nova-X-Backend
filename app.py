@@ -40,7 +40,6 @@ def get_datetime():
     time = now.strftime('%I:%M:%S %p')
     return jsonify({'response': f"📅 Date: {date} | ⏰ Time: {time}"})
 
-
 def handle_chat(message):
     chat_history.append({"role": "user", "content": message})
     system_prompt = {"role": "system", "content": "You are Nova X, a helpful AI assistant."}
@@ -144,22 +143,29 @@ def upload_pdf():
 
 @app.route('/search-web', methods=['POST'])
 def search_web():
-    query = request.json.get('query', '')
+    query = request.json.get('query', '').strip()
     if not query:
         return jsonify({'results': ["No query provided."]}), 400
 
     try:
-        response = requests.get(f"https://lite.duckduckgo.com/lite/?q={query}")
+        response = requests.get(f"https://html.duckduckgo.com/html/?q={query}", headers={
+            "User-Agent": "Mozilla/5.0"
+        })
         soup = BeautifulSoup(response.text, 'html.parser')
         results = []
-        for link in soup.select('a.result-link'):
-            results.append({
-                'title': link.get_text(strip=True),
-                'url': link.get('href')
-            })
-        return jsonify({'results': results or [f'No results found for \"{query}\".']})
-    except Exception:
-        return jsonify({'error': 'Web search failed.'}), 500
+
+        for result in soup.select('.result__title'):
+            a_tag = result.find('a')
+            if a_tag:
+                title = a_tag.get_text(strip=True)
+                url = a_tag.get('href')
+                results.append({'title': title, 'url': url})
+
+        if not results:
+            return jsonify({'results': [f'No results found for "{query}".']})
+        return jsonify({'results': results})
+    except Exception as e:
+        return jsonify({'error': f'Web search failed: {str(e)}'}), 500
 
 @app.route('/<path:path>')
 def serve_static(path):
