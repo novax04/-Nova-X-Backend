@@ -33,7 +33,7 @@ def get_datetime():
     now = datetime.datetime.now()
     date = now.strftime('%A, %B %d, %Y')
     time = now.strftime('%I:%M:%S %p')
-    return jsonify({'response': f"\ud83d\udcc5 Date: {date} | \u23f0 Time: {time}"})
+    return jsonify({'response': f"📅 Date: {date} | ⏰ Time: {time}"})
 
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -137,7 +137,7 @@ def search_web():
                 'title': link.get_text(strip=True),
                 'url': link.get('href')
             })
-        return jsonify({'results': results or [f'No results found for "{query}".']})
+        return jsonify({'results': results or [f'No results found for \"{query}\".']})
     except Exception:
         return jsonify({'error': 'Web search failed.'}), 500
 
@@ -146,5 +146,7 @@ def search_web():
 def serve_static(path):
     return send_from_directory('public', path)
 
-if __name__ == '__main__':
-    app.run(port=5000, debug=True)
+# Final run block for production-friendly deployment
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True)
