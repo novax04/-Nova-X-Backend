@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, redirect
 from flask_cors import CORS
 import os
 import requests
@@ -13,6 +13,7 @@ load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GNEWS_API_KEY = os.getenv("GNEWS_API_KEY")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "https://your-frontend-url.com")
 
 app = Flask(__name__)
 CORS(app)
@@ -27,6 +28,11 @@ country_codes = {
     "canada": "ca", "germany": "de", "france": "fr",
     "australia": "au", "japan": "jp", "china": "cn"
 }
+
+@app.route('/')
+def home():
+    # Return a simple message or redirect to frontend
+    return redirect(FRONTEND_URL, code=302)
 
 @app.route('/datetime', methods=['GET'])
 def get_datetime():
@@ -141,12 +147,11 @@ def search_web():
     except Exception:
         return jsonify({'error': 'Web search failed.'}), 500
 
-@app.route('/', defaults={'path': 'index.html'})
 @app.route('/<path:path>')
 def serve_static(path):
     return send_from_directory('public', path)
 
-# Final run block for production-friendly deployment
+# Final run block
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
