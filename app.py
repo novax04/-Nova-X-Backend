@@ -1,0 +1,150 @@
+from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
+import os
+import requests
+import datetime
+import PyPDF2
+from bs4 import BeautifulSoup
+from dotenv import load_dotenv
+from werkzeug.utils import secure_filename
+
+# Load environment variables
+load_dotenv()
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GNEWS_API_KEY = os.getenv("GNEWS_API_KEY")
+
+app = Flask(__name__)
+CORS(app)
+
+UPLOAD_FOLDER = 'uploads'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+chat_history = []
+
+country_codes = {
+    "united states": "us", "india": "in", "united kingdom": "gb",
+    "canada": "ca", "germany": "de", "france": "fr",
+    "australia": "au", "japan": "jp", "china": "cn"
+}
+
+@app.route('/datetime', methods=['GET'])
+def get_datetime():
+    now = datetime.datetime.now()
+    date = now.strftime('%A, %B %d, %Y')
+    time = now.strftime('%I:%M:%S %p')
+    return jsonify({'response': f"\ud83d\udcc5 Date: {date} | \u23f0 Time: {time}"})
+
+@app.route('/chat', methods=['POST'])
+def chat():
+    message = request.json.get('message', '').strip()
+    if not message:
+        return jsonify({'error': '⚠️ Message is required'}), 400
+
+    chat_history.append({"role": "user", "content": message})
+    system_prompt = {"role": "system", "content": "You are Nova X, a helpful AI assistant."}
+    trimmed_history = chat_history[-12:]
+
+    payload = {
+        "model": "llama3-70b-8192",
+        "messages": [system_prompt] + trimmed_history,
+        "temperature": 1,
+        "max_tokens": 1024,
+        "top_p": 1,
+        "stream": False
+    }
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {GROQ_API_KEY}"
+    }
+
+    try:
+        response = requests.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers)
+        data = response.json()
+        reply = data['choices'][0]['message']['content']
+        chat_history.append({"role": "assistant", "content": reply})
+        return jsonify({'response': reply})
+    except Exception as e:
+        return jsonify({'response': '❌ Error connecting to Groq Chat API.'}), 500
+
+@app.route('/reset-memory', methods=['POST'])
+def reset_memory():
+    chat_history.clear()
+    return jsonify({"message": "🧠 Memory cleared!"})
+
+@app.route('/news/country', methods=['GET'])
+def news_by_country():
+    country = request.args.get('country', '').lower()
+    code = country_codes.get(country)
+    if not code:
+        return jsonify({'response': '⚠️ Unsupported country.'}), 400
+
+    url = f"https://gnews.io/api/v4/top-headlines?country={code}&token={GNEWS_API_KEY}"
+    try:
+        response = requests.get(url)
+        articles = response.json().get('articles', [])[:5]
+        formatted = '\n'.join(f"📰 {a['title']} - {a['source']['name']}" for a in articles)
+        return jsonify({'response': formatted or "No news found."})
+    except Exception:
+        return jsonify({'response': '❌ Error fetching country news.'}), 500
+
+@app.route('/news/topic', methods=['GET'])
+def news_by_topic():
+    topic = request.args.get('topic', '')
+    if not topic:
+        return jsonify({'response': '⚠️ Topic required.'}), 400
+
+    url = f"https://gnews.io/api/v4/search?q={topic}&token={GNEWS_API_KEY}"
+    try:
+        response = requests.get(url)
+        articles = response.json().get('articles', [])[:5]
+        formatted = '\n'.join(f"🗞️ {a['title']} - {a['source']['name']}" for a in articles)
+        return jsonify({'response': formatted or "No news found for this topic."})
+    except Exception:
+        return jsonify({'response': '❌ Error fetching topic news.'}), 500
+
+@app.route('/pdf', methods=['POST'])
+def upload_pdf():
+    file = request.files.get('pdf')
+    if not file:
+        return jsonify({'text': None}), 400
+
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(UPLOAD_FOLDER, filename)
+    file.save(filepath)
+
+    try:
+        with open(filepath, 'rb') as f:
+            reader = PyPDF2.PdfReader(f)
+            text = ''.join(page.extract_text() or '' for page in reader.pages)
+        return jsonify({'text': text})
+    except Exception:
+        return jsonify({'text': None}), 500
+
+@app.route('/search-web', methods=['POST'])
+def search_web():
+    query = request.json.get('query', '')
+    if not query:
+        return jsonify({'results': ["No query provided."]}), 400
+
+    try:
+        response = requests.get(f"https://lite.duckduckgo.com/lite/?q={query}")
+        soup = BeautifulSoup(response.text, 'html.parser')
+        results = []
+        for link in soup.select('a.result-link'):
+            results.append({
+                'title': link.get_text(strip=True),
+                'url': link.get('href')
+            })
+        return jsonify({'results': results or [f'No results found for "{query}".']})
+    except Exception:
+        return jsonify({'error': 'Web search failed.'}), 500
+
+@app.route('/', defaults={'path': 'index.html'})
+@app.route('/<path:path>')
+def serve_static(path):
+    return send_from_directory('public', path)
+
+if __name__ == '__main__':
+    app.run(port=5000, debug=True)
