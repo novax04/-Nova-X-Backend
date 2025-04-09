@@ -14,7 +14,7 @@ load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GNEWS_API_KEY = os.getenv("GNEWS_API_KEY")
 CURRENTS_API_KEY = os.getenv("CURRENTS_API_KEY")
-FRONTEND_URL = os.getenv("FRONTEND_URL", "https://your-frontend-url.com")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "https://nova-x-v2-frontend.onrender.com")
 
 app = Flask(__name__)
 CORS(app)
